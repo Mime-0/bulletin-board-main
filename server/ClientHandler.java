@@ -201,21 +201,23 @@ public class ClientHandler implements Runnable {
             } else if (remaining.toLowerCase().startsWith("contains=")) {
                 int eq = remaining.indexOf('=');
                 String after = remaining.substring(eq + 1).trim();
-                String[] nums = after.split("\\s+", 2);
+
+                String[] nums = after.split("\\s+", 3);
                 if (nums.length < 2) {
                     sendError("INVALID_FORMAT", "Expected contains=<x> <y>");
                     return;
                 }
+
                 cx = parseInt(nums[0]);
                 cy = parseInt(nums[1]);
                 if (cx < 0 || cy < 0) {
                     sendError("INVALID_FORMAT", "Contains coordinates must be non-negative");
                     return;
                 }
+
                 useContains = true;
-                int consumed = eq + 1 + nums[0].length() + 1 + nums[1].length();
-                int next = findNextFilterStart(remaining, eq + consumed);
-                remaining = next < 0 ? "" : remaining.substring(next);
+
+                remaining = (nums.length == 3) ? nums[2].trim() : "";
             } else if (remaining.toLowerCase().startsWith("refersto=")) {
                 int eq = remaining.indexOf('=');
                 refersTo = remaining.substring(eq + 1).trim();
@@ -226,7 +228,7 @@ public class ClientHandler implements Runnable {
             }
         }
 
-        List<Note> notes = (List<Note>) (List<?>) board.getNotes(colorFilter, cx, cy, useContains, refersTo);
+        List<Note> notes = board.getNotes(colorFilter, cx, cy, useContains, refersTo);
         for (Note n : notes) {
             out.println("NOTE " + n.getX() + " " + n.getY() + " " + n.getColor() + " " + n.getMessage());
         }

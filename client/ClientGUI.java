@@ -215,17 +215,35 @@ public class ClientGUI {
     }
 
     private void doGet() {
-        
-        if (!connected) return;
+    if (!connected) return;
 
-        boolean pinsOnly = false;
-        String pinsOnlyStr = JOptionPane.showInputDialog(null, "GET filter (optional): pins only (y/n)");
-        if (pinsOnlyStr != null) {
-            pinsOnly = pinsOnlyStr.equalsIgnoreCase("y");
+    String pinsOnlyStr = JOptionPane.showInputDialog(null, "Pins only? (y/n)");
+    if (pinsOnlyStr == null) return;
+    boolean pinsOnly = pinsOnlyStr.trim().equalsIgnoreCase("y");
+
+    try {
+        if (pinsOnly) {
+            String cmd = "GET PINS";
+            outputArea.append("> " + cmd + "\n");
+
+            java.util.List<String> resp = connection.sendCommand(cmd);
+            java.util.List<int[]> pins = new java.util.ArrayList<>();
+
+            for (String line : resp) {
+                if (line.startsWith("PIN ")) {
+                    String[] parts = line.split("\\s+");
+                    pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
+                }
+            }
+
+            boardPanel.applyPins(pins);
+
+            for (String line : resp) outputArea.append(line + "\n");
+            return;
         }
 
         String color = JOptionPane.showInputDialog(null, "GET filter (optional): colour (leave blank for any)");
-        if (color == null) return; 
+        if (color == null) return;
 
         String contains = JOptionPane.showInputDialog(null, "GET filter (optional): contains as \"x y\" (leave blank for none)");
         if (contains == null) return;
@@ -233,52 +251,44 @@ public class ClientGUI {
         String refers = JOptionPane.showInputDialog(null, "GET filter (optional): refersTo text (leave blank for none)");
         if (refers == null) return;
 
-        String cmd = buildGetCommand(color, contains, refers, pinsOnly);
+        String cmd = buildGetCommand(color, contains, refers, false);
         outputArea.append("> " + cmd + "\n");
 
-    try {
         java.util.List<String> resp = connection.sendCommand(cmd);
 
-        // Count notes for OK n message
-        int count = 0;
-        if (!pinsOnly) {
-            java.util.List<ClientNote> notes = new java.util.ArrayList<>();
-            for (String line : resp) {
-                if (line.startsWith("NOTE ")) {
-                    String[] parts = line.split("\\s+", 5);
-                    int x = Integer.parseInt(parts[1]);
-                    int y = Integer.parseInt(parts[2]);
-                    String colorResp = parts[3];
-                    String msg = parts.length >= 5 ? parts[4] : "";
-                    notes.add(new ClientNote(x, y, colorResp, msg));
-                    count++;
-                }
+        java.util.List<ClientNote> notes = new java.util.ArrayList<>();
+        for (String line : resp) {
+            if (line.startsWith("NOTE ")) {
+                String[] parts = line.split("\\s+", 5);
+                int x = Integer.parseInt(parts[1]);
+                int y = Integer.parseInt(parts[2]);
+                String colorResp = parts[3];
+                String msg = (parts.length >= 5) ? parts[4] : "";
+                notes.add(new ClientNote(x, y, colorResp, msg));
             }
-            boardPanel.setNotes(notes);
-        } else {
-            //  GET PINS
-            java.util.List<int[]> pins = new java.util.ArrayList<>();
-            for (String line : resp) {
-                if (line.startsWith("PIN ")) {
-                    String[] parts = line.split("\\s+");
-                    pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
-                    count++;
-                }
-            }
-            boardPanel.applyPins(pins);
         }
+        boardPanel.setNotes(notes);
 
-        // Append all server lines
+        outputArea.append("> GET PINS\n");
+        java.util.List<String> pinResp = connection.sendCommand("GET PINS");
+        java.util.List<int[]> pins = new java.util.ArrayList<>();
+        for (String line : pinResp) {
+            if (line.startsWith("PIN ")) {
+                String[] parts = line.split("\\s+");
+                pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
+            }
+        }
+        boardPanel.applyPins(pins);
+
+        // Print server lines
         for (String line : resp) outputArea.append(line + "\n");
-
-        // Append OK n
-        //outputArea.append("OK " + count + "\n");
+        for (String line : pinResp) outputArea.append(line + "\n");
 
     } catch (Exception ex) {
         outputArea.append("Error: " + ex.getMessage() + "\n");
     }
-        
-    }
+}
+
 
     private String buildGetCommand(String color, String contains, String refers, boolean pinsOnly) {
     if (pinsOnly) return "GET PINS";
@@ -339,63 +349,53 @@ public class ClientGUI {
     }
 
     private void refreshBoard() {
-    refreshBoard("GET");
-}
+    refreshBoard(false, "GET");
+    }
 
-private void refreshBoard(String getCmd) {
-    if (!connected) return;
+    private void refreshBoard(String getCmd) {
+        refreshBoard(false, getCmd);
+    }
 
-    try {
-        outputArea.append("> " + getCmd + "\n");
+    private void refreshBoard(boolean log, String getCmd) {
+        if (!connected) return;
 
-        java.util.List<String> noteResp = connection.sendCommand(getCmd);
-        java.util.List<ClientNote> notes = new java.util.ArrayList<>();
+        try {
+            if (log) outputArea.append("> " + getCmd + "\n");
 
-        for (String line : noteResp) {
-            if (line.startsWith("NOTE ")) {
-                String[] parts = line.split("\\s+", 5);
-                int x = Integer.parseInt(parts[1]);
-                int y = Integer.parseInt(parts[2]);
-                String color = parts[3];
-                String msg = (parts.length >= 5) ? parts[4] : "";
-                notes.add(new ClientNote(x, y, color, msg));
-            }
-        }
-        boardPanel.setNotes(notes);
+            java.util.List<String> noteResp = connection.sendCommand(getCmd);
+            java.util.List<ClientNote> notes = new java.util.ArrayList<>();
 
-        java.util.List<String> pinResp = connection.sendCommand("GET PINS");
-        java.util.List<int[]> pins = new java.util.ArrayList<>();
-        for (String line : pinResp) {
-            if (line.startsWith("PIN ")) {
-                String[] parts = line.split("\\s+");
-                pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
-            }
-        }
-
-        java.util.List<int[]> visiblePins = new java.util.ArrayList<>();
-        int w = connection.getNoteW();
-        int h = connection.getNoteH();
-
-        for (int[] p : pins) {
-            int px = p[0], py = p[1];
-
-            boolean insideAny = false;
-            for (ClientNote n : notes) {
-                if (px >= n.x && px < n.x + w && py >= n.y && py < n.y + h) {
-                    insideAny = true;
+            for (String line : noteResp) {
+                if (line.startsWith("NOTE ")) {
+                    String[] parts = line.split("\\s+", 5);
+                    int x = Integer.parseInt(parts[1]);
+                    int y = Integer.parseInt(parts[2]);
+                    String color = parts[3];
+                    String msg = (parts.length >= 5) ? parts[4] : "";
+                    notes.add(new ClientNote(x, y, color, msg));
                 }
             }
+            boardPanel.setNotes(notes);
 
-            if (insideAny) visiblePins.add(p);
+            // Pins
+            if (log) outputArea.append("> GET PINS\n");
+
+            java.util.List<String> pinResp = connection.sendCommand("GET PINS");
+            java.util.List<int[]> pins = new java.util.ArrayList<>();
+            for (String line : pinResp) {
+                if (line.startsWith("PIN ")) {
+                    String[] parts = line.split("\\s+");
+                    pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
+                }
+            }
+            boardPanel.applyPins(pins);
+
+        } catch (Exception ex) {
+            outputArea.append("Refresh failed: " + ex.getMessage() + "\n");
         }
-
-        boardPanel.applyPins(visiblePins);
-
-
-    } catch (Exception ex) {
-        outputArea.append("Refresh failed: " + ex.getMessage() + "\n");
     }
-}
+
+
 
 }
 

@@ -76,6 +76,10 @@ public class ClientHandler implements Runnable {
         out.println("OK");
     }
 
+    private void sendOk(String code) {
+        out.println("OK " + code);
+    }
+
     private void sendOk(int count) {
         out.println("OK " + count);
     }
@@ -162,7 +166,7 @@ public class ClientHandler implements Runnable {
             }
             return;
         }
-        sendOk();
+        sendOk("NOTE_POSTED");
     }
 
     private void handleGet(String rest) {
@@ -258,7 +262,7 @@ public class ClientHandler implements Runnable {
             sendError("NO_NOTE_AT_COORDINATE", "No note contains the coordinate (" + x + ", " + y + ")");
             return;
         }
-        sendOk();
+        sendOk("PIN_ADDED");
     }
 
     private void handleUnpin(String rest) {
@@ -278,7 +282,7 @@ public class ClientHandler implements Runnable {
             sendError("PIN_NOT_FOUND", "No pin exists at coordinate (" + x + ", " + y + ")");
             return;
         }
-        sendOk();
+        sendOk("PIN_REMOVED");
     }
 
     private void handleShake(String rest) {
@@ -287,7 +291,7 @@ public class ClientHandler implements Runnable {
             return;
         }
         board.shake();
-        sendOk();
+        sendOk("BOARD_SHAKEN");
     }
 
     private void handleClear(String rest) {
@@ -296,7 +300,7 @@ public class ClientHandler implements Runnable {
             return;
         }
         board.clear();
-        sendOk();
+        sendOk("BOARD_CLEARED");
     }
 
     private void handleDisconnect() {

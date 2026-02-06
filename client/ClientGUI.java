@@ -218,6 +218,12 @@ public class ClientGUI {
         
         if (!connected) return;
 
+        boolean pinsOnly = false;
+        String pinsOnlyStr = JOptionPane.showInputDialog(null, "GET filter (optional): pins only (y/n)");
+        if (pinsOnlyStr != null) {
+            pinsOnly = pinsOnlyStr.equalsIgnoreCase("y");
+        }
+
         String color = JOptionPane.showInputDialog(null, "GET filter (optional): colour (leave blank for any)");
         if (color == null) return; 
 
@@ -227,11 +233,56 @@ public class ClientGUI {
         String refers = JOptionPane.showInputDialog(null, "GET filter (optional): refersTo text (leave blank for none)");
         if (refers == null) return;
 
-        String cmd = buildGetCommand(color, contains, refers);
-        refreshBoard(cmd);
+        String cmd = buildGetCommand(color, contains, refers, pinsOnly);
+        outputArea.append("> " + cmd + "\n");
+
+    try {
+        java.util.List<String> resp = connection.sendCommand(cmd);
+
+        // Count notes for OK n message
+        int count = 0;
+        if (!pinsOnly) {
+            java.util.List<ClientNote> notes = new java.util.ArrayList<>();
+            for (String line : resp) {
+                if (line.startsWith("NOTE ")) {
+                    String[] parts = line.split("\\s+", 5);
+                    int x = Integer.parseInt(parts[1]);
+                    int y = Integer.parseInt(parts[2]);
+                    String colorResp = parts[3];
+                    String msg = parts.length >= 5 ? parts[4] : "";
+                    notes.add(new ClientNote(x, y, colorResp, msg));
+                    count++;
+                }
+            }
+            boardPanel.setNotes(notes);
+        } else {
+            //  GET PINS
+            java.util.List<int[]> pins = new java.util.ArrayList<>();
+            for (String line : resp) {
+                if (line.startsWith("PIN ")) {
+                    String[] parts = line.split("\\s+");
+                    pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
+                    count++;
+                }
+            }
+            boardPanel.applyPins(pins);
+        }
+
+        // Append all server lines
+        for (String line : resp) outputArea.append(line + "\n");
+
+        // Append OK n
+        //outputArea.append("OK " + count + "\n");
+
+    } catch (Exception ex) {
+        outputArea.append("Error: " + ex.getMessage() + "\n");
+    }
+        
     }
 
-    private String buildGetCommand(String color, String contains, String refers) {
+    private String buildGetCommand(String color, String contains, String refers, boolean pinsOnly) {
+    if (pinsOnly) return "GET PINS";
+
     String cmd = "GET";
 
     if (color != null) color = color.trim();

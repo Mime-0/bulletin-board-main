@@ -101,9 +101,11 @@ public class ClientGUI {
 
             setConnectedState(true);
 
+            // If you parse these from handshake:
             boardPanel.setNoteSize(connection.getNoteW(), connection.getNoteH());
 
-            refreshBoard();
+            // Initial refresh, silent (don’t spam GET lines)
+            refreshBoard(false, "GET", true);
         } catch (Exception ex) {
             outputArea.append("Connection failed: " + ex.getMessage() + "\n");
             setConnectedState(false);
@@ -129,8 +131,7 @@ public class ClientGUI {
         }
 
         setConnectedState(false);
-
-        boardPanel.clearNotes();
+        boardPanel.clearNotes(); // make sure BoardPanel clears pins too
     }
 
     private void doPost() {
@@ -215,32 +216,14 @@ public class ClientGUI {
     }
 
     private void doGet() {
-    if (!connected) return;
-    
-    String pinsOnlyStr = JOptionPane.showInputDialog(null, "Pins only? (y/n)");
-    if (pinsOnlyStr == null) return;
-    boolean pinsOnly = pinsOnlyStr.trim().equalsIgnoreCase("y");
+        if (!connected) return;
 
-    try {
+        String pinsOnlyStr = JOptionPane.showInputDialog(null, "Search pins? (y/n)");
+        if (pinsOnlyStr == null) return;
+        boolean pinsOnly = pinsOnlyStr.trim().equalsIgnoreCase("y");
+
         if (pinsOnly) {
-            boardPanel.clearNotes();
-            
-            String cmd = "GET PINS";
-            outputArea.append("> " + cmd + "\n");
-
-            java.util.List<String> resp = connection.sendCommand(cmd);
-            java.util.List<int[]> pins = new java.util.ArrayList<>();
-
-            for (String line : resp) {
-                if (line.startsWith("PIN ")) {
-                    String[] parts = line.split("\\s+");
-                    pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
-                }
-            }
-
-            boardPanel.applyPins(pins);
-
-            for (String line : resp) outputArea.append(line + "\n");
+            refreshPinsOnly(true);
             return;
         }
 
@@ -253,87 +236,47 @@ public class ClientGUI {
         String refers = JOptionPane.showInputDialog(null, "GET filter (optional): refersTo text (leave blank for none)");
         if (refers == null) return;
 
-        String cmd = buildGetCommand(color, contains, refers, false);
-        outputArea.append("> " + cmd + "\n");
-
-        java.util.List<String> resp = connection.sendCommand(cmd);
-
-        java.util.List<ClientNote> notes = new java.util.ArrayList<>();
-        for (String line : resp) {
-            if (line.startsWith("NOTE ")) {
-                String[] parts = line.split("\\s+", 5);
-                int x = Integer.parseInt(parts[1]);
-                int y = Integer.parseInt(parts[2]);
-                String colorResp = parts[3];
-                String msg = (parts.length >= 5) ? parts[4] : "";
-                notes.add(new ClientNote(x, y, colorResp, msg));
-            }
-        }
-        boardPanel.setNotes(notes);
-///* 
-      //  outputArea.append("> GET PINS\n");
-        java.util.List<String> pinResp = connection.sendCommand("GET PINS");
-        java.util.List<int[]> pins = new java.util.ArrayList<>();
-        for (String line : pinResp) {
-            if (line.startsWith("PIN ")) {
-                String[] parts = line.split("\\s+");
-                pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
-            }
-        }
-        boardPanel.applyPins(pins);
-
-        // Print server lines
-       // */
-       
-        for (String line : resp) outputArea.append(line + "\n");
-        //for (String line : pinResp) outputArea.append(line + "\n");
-
-    } catch (Exception ex) {
-        outputArea.append("Error: " + ex.getMessage() + "\n");
-    }
-}
-
-
-    private String buildGetCommand(String color, String contains, String refers, boolean pinsOnly) {
-    if (pinsOnly) return "GET PINS";
-
-    String cmd = "GET";
-
-    if (color != null) color = color.trim();
-    if (contains != null) contains = contains.trim();
-    if (refers != null) refers = refers.trim();
-
-    if (color != null && !color.isEmpty()) {
-        cmd += " colour=" + color;
+        String cmd = buildGetCommand(color, contains, refers);
+        refreshBoard(true, cmd, false);
     }
 
-    if (contains != null && !contains.isEmpty()) {
-        String[] parts = contains.split("\\s+");
-        if (parts.length == 2) {
-            try {
-                int x = Integer.parseInt(parts[0]);
-                int y = Integer.parseInt(parts[1]);
-                if (x >= 0 && y >= 0) {
-                    cmd += " contains=" + x + " " + y;
-                } else {
-                    outputArea.append("Client validation: contains x y must be non-negative\n");
+
+    private String buildGetCommand(String color, String contains, String refers) {
+        String cmd = "GET";
+
+        if (color != null) color = color.trim();
+        if (contains != null) contains = contains.trim();
+        if (refers != null) refers = refers.trim();
+
+        if (!color.isEmpty()) {
+            cmd += " colour=" + color;
+        }
+
+        if (!contains.isEmpty()) {
+            String[] parts = contains.split("\\s+");
+            if (parts.length == 2) {
+                try {
+                    int x = Integer.parseInt(parts[0]);
+                    int y = Integer.parseInt(parts[1]);
+                    if (x >= 0 && y >= 0) {
+                        cmd += " contains=" + x + " " + y;
+                    } else {
+                        outputArea.append("Client validation: contains x y must be non-negative\n");
+                    }
+                } catch (NumberFormatException e) {
+                    outputArea.append("Client validation: contains must be two integers like: 10 20\n");
                 }
-            } catch (NumberFormatException e) {
-                outputArea.append("Client validation: contains must be two integers like: 10 20\n");
+            } else {
+                outputArea.append("Client validation: contains must be two values like: 10 20\n");
             }
-        } else {
-            outputArea.append("Client validation: contains must be two values like: 10 20\n");
         }
+
+        if (!refers.isEmpty()) {
+            cmd += " refersTo=" + refers;
+        }
+
+        return cmd;
     }
-
-    if (refers != null && !refers.isEmpty()) {
-        cmd += " refersTo=" + refers;
-    }
-
-    return cmd;
-}
-
-
 
     private void runCommandAndRefresh(String cmd) {
         if (!connected) return;
@@ -345,22 +288,39 @@ public class ClientGUI {
 
             String last = resp.get(resp.size() - 1);
             if (last.startsWith("OK")) {
-                refreshBoard();
+                refreshBoard(false, "GET", true);
             }
         } catch (Exception ex) {
             outputArea.append("Client error: " + ex.getMessage() + "\n");
         }
     }
 
-    private void refreshBoard() {
-    refreshBoard(false, "GET");
+
+    private void refreshPinsOnly(boolean log) {
+        if (!connected) return;
+
+        try {
+            if (log) outputArea.append("> GET PINS\n");
+            java.util.List<String> pinResp = connection.sendCommand("GET PINS");
+
+            java.util.List<int[]> pins = new java.util.ArrayList<>();
+            for (String line : pinResp) {
+                if (line.startsWith("PIN ")) {
+                    String[] parts = line.split("\\s+");
+                    pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
+                }
+            }
+            boardPanel.applyPins(pins);
+
+            // Print server lines (only for this explicit action)
+            for (String line : pinResp) outputArea.append(line + "\n");
+
+        } catch (Exception ex) {
+            outputArea.append("GET PINS failed: " + ex.getMessage() + "\n");
+        }
     }
 
-    private void refreshBoard(String getCmd) {
-        refreshBoard(false, getCmd);
-    }
-
-    private void refreshBoard(boolean log, String getCmd) {
+    private void refreshBoard(boolean log, String getCmd, boolean fetchPins) {
         if (!connected) return;
 
         try {
@@ -381,27 +341,35 @@ public class ClientGUI {
             }
             boardPanel.setNotes(notes);
 
-             // Pins 
-              
-            if (log) outputArea.append("> GET PINS\n");
+            if (fetchPins) {
+                if (log) outputArea.append("> GET PINS\n");
 
-            java.util.List<String> pinResp = connection.sendCommand("GET PINS");
-            java.util.List<int[]> pins = new java.util.ArrayList<>();
-            for (String line : pinResp) {
-                if (line.startsWith("PIN ")) {
-                    String[] parts = line.split("\\s+");
-                    pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
+                java.util.List<String> pinResp = connection.sendCommand("GET PINS");
+                java.util.List<int[]> pins = new java.util.ArrayList<>();
+                for (String line : pinResp) {
+                    if (line.startsWith("PIN ")) {
+                        String[] parts = line.split("\\s+");
+                        pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
+                    }
+                }
+                boardPanel.applyPins(pins);
+
+                // Only print server lines when user explicitly asked (log==true)
+                if (log) {
+                    for (String line : noteResp) outputArea.append(line + "\n");
+                    for (String line : pinResp) outputArea.append(line + "\n");
+                }
+            } else {
+                // Clear pins visually if user said “no pins”
+                boardPanel.applyPins(new java.util.ArrayList<>());
+
+                if (log) {
+                    for (String line : noteResp) outputArea.append(line + "\n");
                 }
             }
-            boardPanel.applyPins(pins);
 
         } catch (Exception ex) {
             outputArea.append("Refresh failed: " + ex.getMessage() + "\n");
-            
         }
     }
-
-
-
 }
-

@@ -216,13 +216,15 @@ public class ClientGUI {
 
     private void doGet() {
     if (!connected) return;
-
+    
     String pinsOnlyStr = JOptionPane.showInputDialog(null, "Pins only? (y/n)");
     if (pinsOnlyStr == null) return;
     boolean pinsOnly = pinsOnlyStr.trim().equalsIgnoreCase("y");
 
     try {
         if (pinsOnly) {
+            boardPanel.clearNotes();
+            
             String cmd = "GET PINS";
             outputArea.append("> " + cmd + "\n");
 
@@ -268,8 +270,8 @@ public class ClientGUI {
             }
         }
         boardPanel.setNotes(notes);
-
-        outputArea.append("> GET PINS\n");
+///* 
+      //  outputArea.append("> GET PINS\n");
         java.util.List<String> pinResp = connection.sendCommand("GET PINS");
         java.util.List<int[]> pins = new java.util.ArrayList<>();
         for (String line : pinResp) {
@@ -281,8 +283,10 @@ public class ClientGUI {
         boardPanel.applyPins(pins);
 
         // Print server lines
+       // */
+       
         for (String line : resp) outputArea.append(line + "\n");
-        for (String line : pinResp) outputArea.append(line + "\n");
+        //for (String line : pinResp) outputArea.append(line + "\n");
 
     } catch (Exception ex) {
         outputArea.append("Error: " + ex.getMessage() + "\n");
@@ -377,7 +381,8 @@ public class ClientGUI {
             }
             boardPanel.setNotes(notes);
 
-            // Pins
+             // Pins 
+              
             if (log) outputArea.append("> GET PINS\n");
 
             java.util.List<String> pinResp = connection.sendCommand("GET PINS");
@@ -392,6 +397,7 @@ public class ClientGUI {
 
         } catch (Exception ex) {
             outputArea.append("Refresh failed: " + ex.getMessage() + "\n");
+            
         }
     }
 

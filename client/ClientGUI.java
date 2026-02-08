@@ -101,10 +101,8 @@ public class ClientGUI {
 
             setConnectedState(true);
 
-            // If you parse these from handshake:
             boardPanel.setNoteSize(connection.getNoteW(), connection.getNoteH());
 
-            // Initial refresh, silent (don’t spam GET lines)
             refreshBoard(false, "GET", true);
         } catch (Exception ex) {
             outputArea.append("Connection failed: " + ex.getMessage() + "\n");
@@ -131,7 +129,7 @@ public class ClientGUI {
         }
 
         setConnectedState(false);
-        boardPanel.clearNotes(); // make sure BoardPanel clears pins too
+        boardPanel.clearNotes();
     }
 
     private void doPost() {
@@ -300,25 +298,63 @@ public class ClientGUI {
         if (!connected) return;
 
         try {
+            if (log) outputArea.append("> GET\n");
+            java.util.List<String> noteResp = connection.sendCommand("GET");
+            java.util.List<ClientNote> notes = new java.util.ArrayList<>();
+
+            for (String line : noteResp) {
+                if (line.startsWith("NOTE ")) {
+                    String[] parts = line.split("\\s+", 5);
+                    int x = Integer.parseInt(parts[1]);
+                    int y = Integer.parseInt(parts[2]);
+                    String color = parts[3];
+                    String msg = (parts.length >= 5) ? parts[4] : "";
+                    notes.add(new ClientNote(x, y, color, msg));
+                }
+            }
+
             if (log) outputArea.append("> GET PINS\n");
             java.util.List<String> pinResp = connection.sendCommand("GET PINS");
-
             java.util.List<int[]> pins = new java.util.ArrayList<>();
+
             for (String line : pinResp) {
                 if (line.startsWith("PIN ")) {
                     String[] parts = line.split("\\s+");
                     pins.add(new int[]{ Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) });
                 }
             }
+
+            java.util.List<ClientNote> pinnedNotes = new java.util.ArrayList<>();
+            for (ClientNote n : notes) {
+                boolean hasPin = false;
+                for (int[] p : pins) {
+                    if (containsPoint(n, p[0], p[1])) {
+                        hasPin = true;
+                    }
+                }
+                if (hasPin) pinnedNotes.add(n);
+            }
+
+            boardPanel.setNotes(pinnedNotes);
             boardPanel.applyPins(pins);
 
-            // Print server lines (only for this explicit action)
-            for (String line : pinResp) outputArea.append(line + "\n");
+            if (log) {
+                for (String line : noteResp) outputArea.append(line + "\n");
+                for (String line : pinResp) outputArea.append(line + "\n");
+            }
 
         } catch (Exception ex) {
             outputArea.append("GET PINS failed: " + ex.getMessage() + "\n");
         }
     }
+
+    private boolean containsPoint(ClientNote n, int px, int py) {
+        int noteW = connection.getNoteW();
+        int noteH = connection.getNoteH();
+        return (px >= n.x && px < n.x + noteW &&
+                py >= n.y && py < n.y + noteH);
+    }
+
 
     private void refreshBoard(boolean log, String getCmd, boolean fetchPins) {
         if (!connected) return;
@@ -354,13 +390,11 @@ public class ClientGUI {
                 }
                 boardPanel.applyPins(pins);
 
-                // Only print server lines when user explicitly asked (log==true)
                 if (log) {
                     for (String line : noteResp) outputArea.append(line + "\n");
                     for (String line : pinResp) outputArea.append(line + "\n");
                 }
             } else {
-                // Clear pins visually if user said “no pins”
                 boardPanel.applyPins(new java.util.ArrayList<>());
 
                 if (log) {
